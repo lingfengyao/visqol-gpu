@@ -48,6 +48,14 @@ ViSQOL was trained with data from subjective tests that roughly follow industry 
 2. ##### Build ViSQOL
 - Change directory to the root of the ViSQOL project (i.e. where the WORKSPACE file is) and run the following command: `bazel build :visqol -c opt`
 
+For NVIDIA GPU acceleration, build with CUDA 11.8 and add `--use_cuda` when
+running:
+
+```sh
+bazel build :visqol -c opt --config=cuda
+./bazel-bin/visqol --reference_file ref.wav --degraded_file deg.wav --use_cuda
+```
+
 #### Windows Build Instructions (Experimental, last tested on Windows 10 x64, 2020 August)
 
 1. ##### Install Bazel
@@ -63,49 +71,6 @@ ViSQOL was trained with data from subjective tests that roughly follow industry 
 
 4. ##### Build ViSQOL:
 - Change directory to the root of the ViSQOL project (i.e. where the WORKSPACE file is) and run the following command: `bazel build :visqol -c opt`
-
-### Optional CUDA acceleration
-
-ViSQOL can build Gammatone spectrograms and score candidate patches on an
-NVIDIA GPU. Alignment, statistics for the selected patches and MOS mapping
-still run on the CPU, and CPU execution remains the default.
-
-This uses the TensorFlow CUDA toolchain already configured in `WORKSPACE`, which
-has been tested with CUDA 11.8 (CUDA 12 is not supported by this TensorFlow
-version without changes). Set the compute capabilities for your GPU, e.g.
-`sm_90` for H100:
-
-```sh
-bazel build :visqol -c opt --config=cuda \
-  --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=sm_90 \
-  --action_env=TF_CUDA_COMPUTE_CAPABILITIES=sm_90
-./bazel-bin/visqol --reference_file ref.wav --degraded_file deg.wav --use_cuda
-```
-
-To ship one binary for several GPUs, list multiple architectures, e.g.
-`sm_70,sm_75,sm_80,sm_86,sm_89,sm_90,compute_70`; the `compute_70` entry adds
-PTX that newer drivers can JIT-compile.
-
-From the C++ or Python API, set `config.options.use_cuda = true` before
-`Create`, or pass `use_cuda=True` to `VisqolManager.Init`. The Python extension
-must be built with the same `--config=cuda` flags; `pip install .` builds a
-CPU-only extension. Requesting CUDA from a CPU-only build returns an
-`UNIMPLEMENTED` error.
-
-The kernels use double precision and follow the CPU order of operations, so
-scores normally match the CPU build closely; small floating-point differences
-are possible across compilers and hardware. Run the CUDA tests on the target
-machine:
-
-```sh
-bazel test :cuda_gammatone_test :cuda_patch_similarity_comparator_test \
-  --config=cuda \
-  --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=sm_90 \
-  --action_env=TF_CUDA_COMPUTE_CAPABILITIES=sm_90
-```
-
-A `VisqolManager` (with or without CUDA) keeps internal state and should not
-be shared between threads; create one per thread.
 
 ## Command Line Usage
 #### Note Regarding Usage
@@ -151,6 +116,10 @@ be shared between threads; create one per thread.
 `--similarity_to_quality_model`
 
 - The lattice or libsvm model to use during comparison. Use this only if you want to explicitly specify the model file location, otherwise the default model will be used.
+
+`--use_cuda`
+
+- Enable NVIDIA GPU acceleration in a CUDA build (default: false).
 
 `--use_speech_mode`
 
@@ -219,6 +188,9 @@ To integrate ViSQOL with your Bazel project:
     deps = ["@visqol//:visqol_lib"],
     ```
 3. Note that Bazel does not currently resolve transitive dependencies (see [issue #2391](https://github.com/bazelbuild/bazel/issues/2391)). As a workaround, it is required that you copy the contents of the ViSQOL WORKSPACE file to your own project's WORKSPACE file until this is resolved.
+
+For a CUDA build, set `config.mutable_options()->set_use_cuda(true);` before
+calling `Create`.
 
 #### Sample Program
 ```cpp
@@ -321,6 +293,9 @@ From within the root directory install ViSQOL using pip.
 ```
 pip install .
 ```
+With a CUDA-built Python extension, set `config.options.use_cuda = True` before
+calling `api.Create(config)`.
+
 #### Sample Program
 ```python
 import os
